@@ -1,4 +1,4 @@
-name: C16 Hannes H006 - Quartus build
+name: C16 Hannes H006 - Quartus build RAM fix
 "on":
   workflow_dispatch:
 permissions:
@@ -15,6 +15,25 @@ jobs:
           test -f C16_MiSTer_Hannes_H005/C16.qpf
           mkdir -p results
           df -h
+      - name: Fix Hannes RAM initialization for Quartus 17
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          root = Path('C16_MiSTer_Hannes_H005')
+          p = root / 'rtl/hannes_ram.v'
+          s = p.read_text()
+          old = """        integer init_addr;
+                  initial begin
+                      for (init_addr=0; init_addr<61440; init_addr=init_addr+1)
+                          mem[init_addr] = 8'h00;
+                  end"""
+          new = '        // Quartus 17.0.2: avoid the 5000-iteration elaboration limit.\n        initial $readmemh("rtl/hannes_zero.mem", mem);'
+          if s.count(old) != 1:
+              raise SystemExit('Unexpected H005 RAM source; patch not applied')
+          p.write_text(s.replace(old, new))
+          (root / 'rtl/hannes_zero.mem').write_text('00\n' * 61440)
+          print('H006 RAM initialization patch applied successfully')
+          PYCODE
       - name: Free disk space for Quartus
         run: |
           set -euo pipefail
@@ -39,8 +58,8 @@ jobs:
           test -s "$project/output_files/C16.rbf"
           test -s "$project/output_files/C16.fit.rpt"
           test -s "$project/output_files/C16.sta.rpt"
-          cp "$project/output_files/C16.rbf" results/C16_Hannes_H006_candidate.rbf
-          (cd results && sha256sum C16_Hannes_H006_candidate.rbf > SHA256SUMS)
+          cp "$project/output_files/C16.rbf" results/C16_Hannes_H006_RAMfix_candidate.rbf
+          (cd results && sha256sum C16_Hannes_H006_RAMfix_candidate.rbf > SHA256SUMS)
       - name: Collect Quartus reports
         if: always()
         run: |
@@ -53,6 +72,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: C16-Hannes-H006-results
+          name: C16-Hannes-H006-RAMfix-results
           path: results/
           retention-days: 14
