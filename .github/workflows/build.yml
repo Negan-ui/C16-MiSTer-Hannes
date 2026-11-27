@@ -1,4 +1,4 @@
-ame: C16 Hannes H006 - Quartus build
+name: C16 Hannes H006 - Quartus build
 on:
   workflow_dispatch:
 permissions:
