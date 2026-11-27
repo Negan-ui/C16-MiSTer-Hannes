@@ -1,6 +1,9 @@
-name: C16 Hannes H006 - Quartus build RAM fix
+name: C16 Hannes H006 - Native block RAM
 "on":
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build.yml']
 permissions:
   contents: read
 jobs:
@@ -15,25 +18,51 @@ jobs:
           test -f C16_MiSTer_Hannes_H005/C16.qpf
           mkdir -p results
           df -h
-      - name: Fix Hannes RAM initialization for Quartus 17
+      - name: Use native Cyclone V RAM wrapper for Hannes banks
         run: |
           python3 - <<'PYCODE'
           from pathlib import Path
           root = Path('C16_MiSTer_Hannes_H005')
           p = root / 'rtl/hannes_ram.v'
           s = p.read_text()
-          old = """        integer init_addr;
-                  initial begin
-                      for (init_addr=0; init_addr<61440; init_addr=init_addr+1)
-                          mem[init_addr] = 8'h00;
-                  end"""
-          new = '        // Quartus 17.0.2: avoid the 5000-iteration elaboration limit.\n        initial $readmemh("rtl/hannes_zero.mem", mem);'
-          if s.count(old) != 1:
-              raise SystemExit('Unexpected H005 RAM source; patch not applied')
-          p.write_text(s.replace(old, new))
-          (root / 'rtl/hannes_zero.mem').write_text('00\n' * 61440)
-          print('H006 RAM initialization patch applied successfully')
+          assert 'mem [0:61439]' in s and 'initial begin' in s
+          s = s.replace('// The bottom 4 KiB is physically unreachable in extension banks.', '// Use the original Cyclone V altsyncram wrapper for each full 64 KiB bank.\n// The bottom 4 KiB of each extension bank remains inaccessible.')
+          s = s.replace("    wire [15:0] extra_addr = addr - 16'h1000;\n", '')
+          a = s.index('    genvar i;')
+          b = s.index('    assign data_out', a)
+          s = s[:a] + """    genvar i;
+              generate for (i=0; i<3; i=i+1) begin : extension
+                  localparam [1:0] BANK_ID = i[1:0];
+                  gen_dpram #(16) bank_ram (
+                      .clock_a(clk), .address_a(16'h0000), .data_a(8'h00), .wren_a(1'b0),
+                      .clock_b(clk), .address_b(addr), .data_b(data_in),
+                      .wren_b(we && !standard_sel && bank == BANK_ID),
+                      .q_b(extra_q[i]), .cs_b(cs && !standard_sel && bank == BANK_ID)
+                  );
+              end endgenerate
+
+          """ + s[b:]
+          p.write_text(s)
+          p = root / 'tests/gen_dpram_model.v'
+          s = p.read_text()
+          assert 'reg [DW-1:0] q;' in s
+          p.write_text(s.replace('    reg [DW-1:0] q;', '    reg [DW-1:0] q;\n    integer init;\n    initial for(init=0;init<(1<<AW);init=init+1) mem[init]=0;'))
+          p = root / 'C16.qsf'
+          s = p.read_text()
+          assert 'NUM_PARALLEL_PROCESSORS ALL' in s
+          p.write_text(s.replace('NUM_PARALLEL_PROCESSORS ALL','NUM_PARALLEL_PROCESSORS 2'))
+          print('H006 native RAM patch applied')
           PYCODE
+          cp C16_MiSTer_Hannes_H005/rtl/hannes_ram.v results/hannes_ram.v
+      - name: HDL regression PAL and NTSC
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+          cd C16_MiSTer_Hannes_H005
+          sh tests/run.sh 2>&1 | tee ../results/hdl-regression.log
+          sh tests/run_h005.sh 2>&1 | tee ../results/hdl-ted-bus.log
       - name: Free disk space for Quartus
         run: |
           set -euo pipefail
@@ -53,13 +82,15 @@ jobs:
           project="$PWD/C16_MiSTer_Hannes_H005"
           docker run --rm -v "$project:/build" -w /build raetro/quartus:17.0 quartus_sh --version 2>&1 | tee results/quartus-version.txt
           grep -q '17.0.2' results/quartus-version.txt
+          free -h | tee results/memory-before.txt
+          cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events > results/cgroup-before.txt || true
           rm -f "$project/output_files/C16.rbf"
           docker run --rm -v "$project:/build" -w /build raetro/quartus:17.0 quartus_sh --flow compile C16 2>&1 | tee results/compile.log
           test -s "$project/output_files/C16.rbf"
           test -s "$project/output_files/C16.fit.rpt"
           test -s "$project/output_files/C16.sta.rpt"
-          cp "$project/output_files/C16.rbf" results/C16_Hannes_H006_RAMfix_candidate.rbf
-          (cd results && sha256sum C16_Hannes_H006_RAMfix_candidate.rbf > SHA256SUMS)
+          cp "$project/output_files/C16.rbf" results/C16_Hannes_H006_NativeRAM_candidate.rbf
+          (cd results && sha256sum C16_Hannes_H006_NativeRAM_candidate.rbf > SHA256SUMS)
       - name: Collect Quartus reports
         if: always()
         run: |
@@ -68,10 +99,13 @@ jobs:
             find C16_MiSTer_Hannes_H005/output_files -maxdepth 1 -type f \( -name '*.rpt' -o -name '*.summary' -o -name '*.smsg' \) -exec cp '{}' results/ \;
           fi
           df -h > results/disk-space.txt
+          free -h > results/memory-after.txt
+          cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory.events > results/cgroup-after.txt || true
+          sudo dmesg | tail -n 150 > results/kernel-tail.txt || true
       - name: Upload candidate and diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: C16-Hannes-H006-RAMfix-results
+          name: C16-Hannes-H006-NativeRAM-results
           path: results/
           retention-days: 14
