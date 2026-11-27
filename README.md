@@ -37,7 +37,8 @@ The core was successfully compiled with Quartus Prime Lite 17.0.2. Analysis and 
 | Hannes register and bank switching | Passed in HDL simulation |
 | Full address-space mapping | Passed in HDL simulation |
 | PAL and NTSC TED bus stress tests | Passed in HDL simulation |
-| FPGA timing | Positive setup and hold slack |
+| FPGA timing | Setup +0.268 ns, hold +0.224 ns |
+| FPGA resources | 37% ALMs, 73% block memory bits, 94% RAM blocks (521/553) |
 | Real MiSTer hardware | Successfully tested |
 | Adam Is Me Enhanced Edition (256 KiB) | Confirmed running on MiSTer |
 
@@ -51,14 +52,16 @@ Open **Actions**, select **C16 Hannes H006 - Native block RAM**, and choose **Ru
 
 ## Credits and acknowledgements
 
-- **Sorgelig** – original C16 / Plus/4 MiSTer port.
+- **Sorgelig** – original [C16 / Plus/4 MiSTer port](https://github.com/MiSTer-devel/C16_MiSTer), based on upstream snapshot [`25d9d743`](https://github.com/MiSTer-devel/C16_MiSTer/tree/25d9d74366a8ebd0059affa2d1de14f08722ae17).
 - **Istvan Hegedus** – original [FPGATED](https://hackaday.io/project/11460-fpgated) TED core.
 - **Negan** – Hannes 256 KiB extension project, development and hardware testing.
 - Thanks to the MiSTer, Commodore 264 series and LittleSixteen communities, and all contributors to the original core and its dependencies.
 
 ## Licensing
 
-This project is based on the existing GPL-licensed MiSTer core. The new Hannes controller carries a GPL-3.0-or-later notice. Original copyright notices and the licenses of individual components must be respected. ROM images and third-party software may be subject to separate rights and are not automatically covered by the HDL source licenses.
+This project is based on the existing GPL-licensed MiSTer core. The new Hannes controller carries a GPL-3.0-or-later notice. Original copyright notices and the licenses of individual components must be respected. See the upstream `gpl-3.0.txt` and original file headers. ROM images and third-party software may be subject to separate rights and are not automatically covered by the HDL source licenses.
+
+**Publication status:** This repository is currently private. Its inherited Commodore system and drive ROM images (and the RBF which may embed them) have not been independently cleared for public redistribution. The GPL notice for HDL is not a license for those ROMs. Do not change repository visibility or publish a release until these rights and repository history have been reviewed.
 
 This is an independent community project and is not an official MiSTer-devel release.
 
