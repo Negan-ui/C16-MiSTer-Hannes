@@ -1,5 +1,5 @@
 name: C16 Hannes H006 - Quartus build
-on:
+"on":
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,6 +15,14 @@ jobs:
           test -f C16_MiSTer_Hannes_H005/C16.qpf
           mkdir -p results
           df -h
+      - name: Free disk space for Quartus
+        run: |
+          set -euo pipefail
+          df -h
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL /usr/share/miniconda
+          sudo docker image prune -a -f
+          sudo apt-get clean
+          df -h | tee results/disk-after-cleanup.txt
       - name: Pull Quartus for MiSTer
         run: |
           set -o pipefail
