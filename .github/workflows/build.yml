@@ -1,0 +1,50 @@
+ame: C16 Hannes H006 - Quartus build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract H005 project
+        run: |
+          unzip -q C16_MiSTer_Hannes_H005_Source.zip
+          test -f C16_MiSTer_Hannes_H005/C16.qpf
+          mkdir -p results
+          df -h
+      - name: Pull Quartus for MiSTer
+        run: |
+          set -o pipefail
+          docker pull raetro/quartus:17.0 2>&1 | tee results/docker-pull.log
+          docker image inspect raetro/quartus:17.0 --format '{{json .RepoDigests}}' > results/image-digest.txt
+      - name: Compile C16 project
+        run: |
+          set -euo pipefail
+          project="$PWD/C16_MiSTer_Hannes_H005"
+          docker run --rm -v "$project:/build" -w /build raetro/quartus:17.0 quartus_sh --version 2>&1 | tee results/quartus-version.txt
+          grep -q '17.0.2' results/quartus-version.txt
+          rm -f "$project/output_files/C16.rbf"
+          docker run --rm -v "$project:/build" -w /build raetro/quartus:17.0 quartus_sh --flow compile C16 2>&1 | tee results/compile.log
+          test -s "$project/output_files/C16.rbf"
+          test -s "$project/output_files/C16.fit.rpt"
+          test -s "$project/output_files/C16.sta.rpt"
+          cp "$project/output_files/C16.rbf" results/C16_Hannes_H006_candidate.rbf
+          (cd results && sha256sum C16_Hannes_H006_candidate.rbf > SHA256SUMS)
+      - name: Collect Quartus reports
+        if: always()
+        run: |
+          mkdir -p results
+          if [ -d C16_MiSTer_Hannes_H005/output_files ]; then
+            find C16_MiSTer_Hannes_H005/output_files -maxdepth 1 -type f \( -name '*.rpt' -o -name '*.summary' -o -name '*.smsg' \) -exec cp '{}' results/ \;
+          fi
+          df -h > results/disk-space.txt
+      - name: Upload candidate and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: C16-Hannes-H006-results
+          path: results/
+          retention-days: 14
